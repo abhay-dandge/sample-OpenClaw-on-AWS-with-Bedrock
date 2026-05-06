@@ -193,9 +193,9 @@ Switch models with one CloudFormation parameter — no code changes:
 | EBS (30GB gp3 x2) | $4.80 | Required (root + data volumes) |
 | NAT Gateway | ~$34 | Required (EC2 in private subnet, includes ~40GB data) |
 | CloudWatch Monitoring | ~$4 | ✅ Disable to save ~$4/mo |
-| VPC Endpoints (6 interface) | ~$88 | ✅ Enable for private network (+~$88/mo) |
+| VPC Endpoints (6 interface) | ~$88 | ✅ Enable for private network (+$88/mo) |
 | ALB + CloudFront | $22.80 | ✅ Enable for public access (+$22.80/mo) |
-| AWS WAF | ~$10 | ✅ Only if deploy to us-east-1 (+~$10/mo) |
+| AWS WAF | ~$10 | ✅ Only if deploy to us-east-1 (+$10/mo) |
 | Bedrock (Nova 2 Lite, ~100 conv/day) | $5.55 | Pay-per-use (~6M input + 1.5M output tokens/mo) |
 | **Total (default: VPCe OFF, monitoring ON)** | **~$101/mo** | EC2 + NAT + CloudWatch + Bedrock |
 | **Total (minimal: VPCe OFF, monitoring OFF)** | **~$97/mo** | Save ~$4/mo by disabling CloudWatch |
@@ -287,7 +287,7 @@ Switch models with one CloudFormation parameter — no code changes:
 | `OpenClawVersion` | `2026.4.27` | OpenClaw version. `2026.3.24` (no model approval needed, WeChat compatible), `2026.4.5` / `2026.4.10` / `2026.4.27` (auto-discovery, embeddings), or `latest` (not recommended for production) |
 | `InstanceType` | `c7g.large` | EC2 instance type. Graviton (ARM) recommended. **c7g = compute-optimized** (recommended, 2 vCPU for Node.js + Docker sandbox), **r7g/r6g = memory-optimized** (plugins, embeddings), **t4g = burstable** (cost-optimized). 14 ARM + 7 x86 instance types available |
 | `CreateVPCEndpoints` | `false` | Create VPC endpoints for private network access (**~~$88/mo** for 6 interface endpoints across 2 AZs: Bedrock Runtime, Bedrock Mantle (conditional on region), SSM, SSM Messages, EC2 Messages, CloudWatch Logs. Each endpoint: **$0.01/hour/AZ × 2 AZs × 730 hours = $14.60/mo**. Plus ~$0.75/mo data processing. S3 Gateway endpoint always free). **Default OFF to minimize cost** — traffic goes via NAT Gateway to AWS public HTTPS endpoints instead (still encrypted via TLS, no security downside for most use cases). Enable only if compliance requires private network routing (adds **~$88/mo**). |
-| `EnableMonitoring` | `true` | Enable CloudWatch monitoring, EC2 auto-recovery + reboot alarms, metrics (memory, disk, swap), and log shipping (+~$4/mo). **Recommended ON** for production |
+| `EnableMonitoring` | `true` | Enable CloudWatch monitoring, EC2 auto-recovery + reboot alarms, metrics (memory, disk, swap), and log shipping (~$4/mo). **Recommended ON** for production |
 | `EnableSandbox` | `true` | Install Docker for sandboxed command execution (recommended for group chats and untrusted code). Adds ~500MB disk usage |
 | `EnableDataProtection` | `false` | Retain both EBS volume and S3 bucket when stack is deleted (protects against accidental data loss). **Set to true for production** |
 | `EnablePublicAccess` | `false` | Enable public HTTPS access via ALB + CloudFront (~$25/mo). When disabled, access via SSM Session Manager only (secure, no open ports). **⚠️ Security Note**: CloudFront → ALB connection uses HTTP (not HTTPS), meaning origin traffic is unencrypted. This is an accepted tradeoff for simplicity. For full end-to-end encryption, add ACM certificate + HTTPS ALB listener (see SECURITY.md). |
@@ -463,7 +463,7 @@ The stack includes multiple layers of self-healing (always enabled, no extra cos
 | **OS security patches** | Unattended-upgrades for security fixes | Daily |
 | **`openclaw doctor`** | Config validation and auto-repair post-install | At install |
 
-**With `EnableMonitoring=true` (default, +~$4/mo):**
+**With `EnableMonitoring=true` (default, +$4/mo):**
 
 | Layer | What it does |
 |-------|-------------|
