@@ -1855,21 +1855,25 @@ Resources:
         - !Sub "arn:aws:automate:${AWS::Region}:ec2:reboot"
 
 Outputs:
+  GetToken:
+    Description: "Get OpenClaw Gateway Token from SSM Parameter Store"
+    Value: !Sub |
+      aws ssm get-parameter --name /openclaw/${AWS::StackName}/gateway-token --with-decryption --query Parameter.Value --output text --region ${AWS::Region}
+
   CloudFrontURL:
     Condition: EnablePublic
-    Description: "PUBLIC ACCESS URL (HTTPS) - IP-restricted at ALB security group to 203.220.180.180/32"
+    Description: "PUBLIC ACCESS URL (HTTPS). Replace <token> with the value from the output 'GetToken'"
     Value: !Sub
-      - "https://${Domain}/?token=${Token}"
+      - "https://${Domain}/?token=<token>"
       - Domain: !GetAtt OpenClawCloudFrontDistribution.DomainName
-        Token: !Select [3, !Split ['"', !GetAtt OpenClawWaitCondition.Data]]
+
 
   ALBURL:
     Condition: EnablePublic
-    Description: "ALB URL (HTTP) - inbound is restricted to cloudfront prefix list via security group"
+    Description: "ALB URL (HTTP) - Replace <token> with the value from the output 'GetToken'. Not secured, for testing/debugging only (bypasses CloudFront)."
     Value: !Sub
-      - "http://${Domain}/?token=${Token}"
+      - "http://${Domain}/?token=<token>"
       - Domain: !GetAtt OpenClawALB.DNSName
-        Token: !Select [3, !Split ['"', !GetAtt OpenClawWaitCondition.Data]]
 
   Step1InstallSSMPlugin:
     Condition: DisablePublic
@@ -1884,10 +1888,8 @@ Outputs:
 
   Step3AccessURL:
     Condition: DisablePublic
-    Description: "STEP 3: Open this URL in browser"
-    Value: !Sub
-      - "http://localhost:18789/?token=${Token}"
-      - Token: !Select [3, !Split ['"', !GetAtt OpenClawWaitCondition.Data]]
+    Description: "STEP 3: Open in browser (replace <token> with value from the output 'GetToken')"
+    Value: "http://localhost:18789/?token=<token>"     
 
   Step4StartChatting:
     Condition: DisablePublic
