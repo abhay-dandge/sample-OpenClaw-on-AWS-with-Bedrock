@@ -44,10 +44,10 @@ The CloudFormation template implements defense-in-depth with the following layer
 
 ### Private Access (SSM Session Manager Only)
 When `EnablePublicAccess=false` (default):
-1. **EC2 in private subnet** (no public IP)
-2. **NAT Gateway** for controlled outbound internet access
+1. **EC2 in public subnet** (no public IP assigned)
+2. **Internet Gateway** for direct outbound internet access (TLS encrypted to AWS endpoints)
 3. **SSM Session Manager** access only (no SSH required)
-4. **VPC endpoints** (optional, keeps AWS API traffic private)
+4. **VPC endpoints** (optional, keeps AWS API traffic on private network)
 5. **IMDSv2 enforcement** (prevents SSRF attacks)
 6. **EBS encryption** at rest (AWS managed keys)
 7. **S3 encryption** at rest (AES256)
@@ -64,6 +64,7 @@ When `EnablePublicAccess=true`, adds:
 6. **HTTPS enforcement** (CloudFront viewer side)
 7. **Geographic restrictions** (optional, via `AllowedCountries` parameter)
 8. ⚠️ **HTTP-only origin** (CloudFront → ALB uses unencrypted HTTP)
+9. **EC2 in public subnet** (for ALB target registration, no public IP assigned)
 
 ## Security Features
 
@@ -115,7 +116,7 @@ AllowedSSHCIDR: 127.0.0.1/32  # Disables SSH
 - ✅ Compliance-friendly (HIPAA, SOC2)
 - ✅ Reduced attack surface
 
-**Cost**: ~$22/month for 3 endpoints
+**Cost**: ~$88/month for 6 interface endpoints across 2 AZs (S3 Gateway endpoint free)
 
 ### 4. Docker Sandbox
 
@@ -151,7 +152,7 @@ When `EnablePublicAccess=true`, the deployment exposes OpenClaw via CloudFront +
 - ✅ AWS WAF protection (SQL injection, XSS, rate limiting)
 - ✅ Custom header validation (CloudFront → ALB, secret AWS::StackId)
 - ✅ CloudFront managed prefix list (only CloudFront IPs can reach ALB)
-- ✅ EC2 in private subnet (no direct internet access)
+- ✅ EC2 in public subnet (no public IP assigned, no direct internet inbound access)
 - ⚠️  **HTTP-only origin** (CloudFront → ALB uses unencrypted HTTP)
 
 **Known Limitation**: The CloudFront → ALB connection uses HTTP (port 80), not HTTPS. This means traffic between CloudFront edge locations and the ALB traverses the AWS network **unencrypted**.
@@ -159,7 +160,7 @@ When `EnablePublicAccess=true`, the deployment exposes OpenClaw via CloudFront +
 **Risk Assessment**:
 - Traffic mostly stays on AWS backbone (private network between CloudFront PoPs and ALB)
 - Custom header secret prevents direct ALB access (bypassing CloudFront)
-- EC2 instance is in private subnet (no public IP)
+- EC2 instance is in public subnet but has no public IP assigned (no direct internet inbound access)
 - This is an **accepted tradeoff** for deployment simplicity (no domain/ACM certificate required)
 
 **Mitigation** (if end-to-end encryption is required):
@@ -175,7 +176,7 @@ User (HTTPS encrypted)
   → CloudFront Edge Location (TLS termination)
   → [AWS Backbone - HTTP plaintext]
   → ALB in VPC (port 80)
-  → EC2 in private subnet (port 18789)
+  → EC2 in public subnet (port 18789, no public IP)
 ```
 
 For personal AI assistant deployments, the HTTP-only origin is acceptable. For production/enterprise use cases requiring full end-to-end encryption, implement the HTTPS ALB listener mitigation above.
@@ -205,11 +206,11 @@ This template implements the following AWS security best practices:
 - ⚠️ **CloudFront origin**: HTTP only (see section 6 above for details)
 
 ### 4. Network Isolation
-- ✅ **Private subnet**: EC2 instance has no public IP (`AssociatePublicIpAddress: false`)
-- ✅ **Security groups**: Deny-by-default, allow only required ports
-- ✅ **Network ACLs**: Stateless firewall on private subnet (HTTPS, DNS, ephemeral ports only)
-- ✅ **NAT Gateway**: Single controlled egress point for internet access
-- ✅ **VPC endpoints** (optional): Keep AWS API traffic off public internet
+- ✅ **Public subnet without public IP**: EC2 instance has no public IP (`AssociatePublicIpAddress: false`)
+- ✅ **Security groups**: Deny-by-default, allow only required ports (ALB ingress when public access enabled)
+- ✅ **Network ACLs**: Stateless firewall on VPC endpoint subnets (conditional, HTTPS + ephemeral only)
+- ✅ **Internet Gateway**: Direct outbound access to internet (TLS encrypted AWS endpoints)
+- ✅ **VPC endpoints** (optional): Keep AWS API traffic on private network (6 interface + 1 gateway)
 
 ### 5. Instance Metadata Security (IMDSv2)
 - ✅ **IMDSv2 enforced**: `HttpTokens: required` prevents SSRF attacks
@@ -383,16 +384,16 @@ systemctl --user restart clawdbot-gateway
 
 - Use `t4g.small` instance (Graviton, cost-effective)
 - Use Nova 2 Lite model (cheapest)
-- Disable VPC endpoints (save $22/month)
-- Allow SSH from your IP only
+- Disable VPC endpoints (save $88/month, traffic via Internet Gateway to public AWS endpoints)
+- Use SSM Session Manager only (no SSH needed)
 - Enable sandbox mode
 
 ### For Production
 
 - Use `t4g.medium` or larger (Graviton recommended)
 - Use Nova Pro or Claude models (better performance)
-- **Enable VPC endpoints** (required for security)
-- **Disable SSH** (`AllowedSSHCIDR: 127.0.0.1/32`)
+- **Enable VPC endpoints** (optional, adds $88/mo for private network routing)
+- **Use SSM Session Manager only** (no SSH access needed)
 - Enable sandbox mode
 - Set up CloudWatch alarms
 - Enable AWS Config rules
@@ -401,8 +402,8 @@ systemctl --user restart clawdbot-gateway
 ### For Compliance (HIPAA, PCI-DSS)
 
 - **Must use Graviton or x86 instances in compliant regions**
-- **Must enable VPC endpoints**
-- **Must disable SSH**
+- **Must enable VPC endpoints** (keeps all AWS API traffic on private network)
+- **Use SSM Session Manager only** (no SSH access)
 - Enable CloudTrail
 - Enable VPC Flow Logs
 - Encrypt EBS volumes (enabled by default)

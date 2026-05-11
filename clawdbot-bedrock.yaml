@@ -113,7 +113,7 @@ Parameters:
 
   EnableWAF:
     Type: String
-    Default: "true"
+    Default: "false"
     Description: "Enable AWS WAF for CloudFront (Layer 7 DDoS protection, SQL injection, XSS). WAF must be created in us-east-1."
     AllowedValues:
       - "true"
@@ -266,24 +266,6 @@ Resources:
       VpcId: !Ref OpenClawVPC
       InternetGatewayId: !Ref OpenClawInternetGateway
 
-  # NAT Gateway for private subnet internet access
-  NATGatewayEIP:
-    Type: AWS::EC2::EIP
-    DependsOn: AttachGateway
-    Properties:
-      Domain: vpc
-      Tags:
-        - Key: Name
-          Value: !Sub "${AWS::StackName}-nat-eip"
-
-  NATGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NATGatewayEIP.AllocationId
-      SubnetId: !Ref PublicSubnet
-      Tags:
-        - Key: Name
-          Value: !Sub "${AWS::StackName}-nat-gateway"
 
   PublicSubnet:
     Type: AWS::EC2::Subnet
@@ -310,6 +292,7 @@ Resources:
 
   PrivateSubnet:
     Type: AWS::EC2::Subnet
+    Condition: CreateEndpoints
     Properties:
       VpcId: !Ref OpenClawVPC
       CidrBlock: "10.0.2.0/24"
@@ -358,24 +341,19 @@ Resources:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
 
-  # Private Route Table for private subnets
+  # Private Route Table for private subnets (VPC endpoints only, no NAT)
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
+    Condition: CreateEndpoints
     Properties:
       VpcId: !Ref OpenClawVPC
       Tags:
         - Key: Name
           Value: !Sub "${AWS::StackName}-private-rtb"
 
-  PrivateRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      DestinationCidrBlock: "0.0.0.0/0"
-      NatGatewayId: !Ref NATGateway
-
   PrivateSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateEndpoints
     Properties:
       SubnetId: !Ref PrivateSubnet
       RouteTableId: !Ref PrivateRouteTable
@@ -388,17 +366,20 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable
 
   # ==================== Network ACLs for Private Subnet Security ====================
+  # Private subnet now used only for VPC endpoints (when enabled)
   PrivateNetworkAcl:
     Type: AWS::EC2::NetworkAcl
+    Condition: CreateEndpoints
     Properties:
       VpcId: !Ref OpenClawVPC
       Tags:
         - Key: Name
           Value: !Sub "${AWS::StackName}-private-nacl"
 
-  # Inbound Rules
-  PrivateNetworkAclInboundHTTP:
+  # Inbound Rules - only from VPC CIDR for VPC endpoints
+  PrivateNetworkAclInboundHTTPS:
     Type: AWS::EC2::NetworkAclEntry
+    Condition: CreateEndpoints
     Properties:
       NetworkAclId: !Ref PrivateNetworkAcl
       RuleNumber: 100
@@ -406,35 +387,12 @@ Resources:
       RuleAction: allow
       CidrBlock: 10.0.0.0/16
       PortRange:
-        From: 80
-        To: 80
-
-  PrivateNetworkAclInboundHTTPS:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref PrivateNetworkAcl
-      RuleNumber: 110
-      Protocol: 6
-      RuleAction: allow
-      CidrBlock: 10.0.0.0/16
-      PortRange:
         From: 443
         To: 443
-
-  PrivateNetworkAclInboundOpenClaw:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref PrivateNetworkAcl
-      RuleNumber: 120
-      Protocol: 6
-      RuleAction: allow
-      CidrBlock: 10.0.0.0/16
-      PortRange:
-        From: 18789
-        To: 18789
 
   PrivateNetworkAclInboundEphemeral:
     Type: AWS::EC2::NetworkAclEntry
+    Condition: CreateEndpoints
     Properties:
       NetworkAclId: !Ref PrivateNetworkAcl
       RuleNumber: 130
@@ -445,9 +403,10 @@ Resources:
         From: 1024
         To: 65535
 
-  # Outbound Rules - Restrictive (only HTTPS + DNS)
+  # Outbound Rules - only HTTPS for VPC endpoint traffic
   PrivateNetworkAclOutboundHTTPS:
     Type: AWS::EC2::NetworkAclEntry
+    Condition: CreateEndpoints
     Properties:
       NetworkAclId: !Ref PrivateNetworkAcl
       RuleNumber: 100
@@ -459,34 +418,9 @@ Resources:
         From: 443
         To: 443
 
-  PrivateNetworkAclOutboundHTTP:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref PrivateNetworkAcl
-      RuleNumber: 110
-      Protocol: 6
-      Egress: true
-      RuleAction: allow
-      CidrBlock: 0.0.0.0/0
-      PortRange:
-        From: 80
-        To: 80
-
-  PrivateNetworkAclOutboundDNS:
-    Type: AWS::EC2::NetworkAclEntry
-    Properties:
-      NetworkAclId: !Ref PrivateNetworkAcl
-      RuleNumber: 120
-      Protocol: 17
-      Egress: true
-      RuleAction: allow
-      CidrBlock: 0.0.0.0/0
-      PortRange:
-        From: 53
-        To: 53
-
   PrivateNetworkAclOutboundEphemeral:
     Type: AWS::EC2::NetworkAclEntry
+    Condition: CreateEndpoints
     Properties:
       NetworkAclId: !Ref PrivateNetworkAcl
       RuleNumber: 130
@@ -497,12 +431,6 @@ Resources:
       PortRange:
         From: 1024
         To: 65535
-
-  PrivateSubnetNetworkAclAssociation:
-    Type: AWS::EC2::SubnetNetworkAclAssociation
-    Properties:
-      SubnetId: !Ref PrivateSubnet
-      NetworkAclId: !Ref PrivateNetworkAcl
 
   PrivateSubnetNetworkAclAssociation2:
     Type: AWS::EC2::SubnetNetworkAclAssociation
@@ -1580,11 +1508,11 @@ Resources:
         - Device: /dev/sdf
           VolumeId: !If [ProtectData, !Ref OpenClawDataVolumeRetained, !Ref OpenClawDataVolumeNotRetained]
       NetworkInterfaces:
-        - AssociatePublicIpAddress: false
+        - AssociatePublicIpAddress: true
           DeviceIndex: 0
           GroupSet:
             - !Ref OpenClawSecurityGroup
-          SubnetId: !Ref PrivateSubnet
+          SubnetId: !Ref PublicSubnet
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -1918,25 +1846,24 @@ Outputs:
       - |
         EC2 (${InstanceType}): ~$50-60 (c7g.large ~$58, Graviton 20% cheaper than x86)
         EBS (30GB x2): ~$4.80
-        NAT Gateway: ~$33 ($0.045/hour + $0.045/GB data transfer)
         VPC Endpoints: ${EndpointCost}
         Monitoring: ${MonitoringCost}
         Public Access: ${PublicCost}
         WAF: ${WAFCost}
         Bedrock: Pay-per-use
         Total: ~${TotalCost}/month
-        Note: EC2 in private subnet (NAT Gateway required for internet). Compute-optimized (c7g, 2 vCPU) for Node.js + Docker sandbox. Swap, health checks, OS patches always enabled.
-      - EndpointCost: !If [CreateEndpoints, "~$51 ($0.01/hour x 9 interface endpoints: Bedrock Runtime, Bedrock Mantle, SSM, SSM Messages, EC2 Messages, CloudWatch Logs, CloudFormation, EC2. S3 Gateway free)", "$0 (disabled)"]
+        Note: EC2 in public subnet with direct internet access (no NAT Gateway). Compute-optimized (c7g, 2 vCPU) for Node.js + Docker sandbox. Swap, health checks, OS patches always enabled.
+      - EndpointCost: !If [CreateEndpoints, "~$88 ($0.01/hour/AZ x 2 AZs x 6 interface endpoints = $14.60/endpoint/mo: Bedrock Runtime, Bedrock Mantle (conditional), SSM, SSM Messages, EC2 Messages, CloudWatch Logs. S3 Gateway free)", "$0 (disabled)"]
         MonitoringCost: !If [EnableCW, "~$4 (CloudWatch Agent + detailed monitoring + alarms + logs)", "$0 (disabled)"]
         PublicCost: !If [EnablePublic, "~$25 (ALB ~$22/mo + CloudFront $0.085/GB)", "$0 (SSM only)"]
         WAFCost: !If [CreateWAF, "~$10 (WebACL $5/mo + 5 rules x $1/mo + requests $0.60/million)", "$0 (disabled or not us-east-1)"]
         TotalCost: !If
           - EnablePublic
-          - !If [CreateWAF, "~$180-190", "~$170-180"]
+          - !If [CreateWAF, "~$188", "~$178"]
           - !If
             - CreateEndpoints
-            - !If [EnableCW, "$146-151", "$142-147"]
-            - !If [EnableCW, "$96-100", "$91-96"]
+            - !If [EnableCW, "~$155", "~$151"]
+            - !If [EnableCW, "~$67", "~$63"]
 
   InstanceArchitecture:
     Description: "Instance architecture"
