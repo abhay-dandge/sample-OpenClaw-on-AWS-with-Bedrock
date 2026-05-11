@@ -1107,7 +1107,7 @@ Resources:
                           "disk": { "measurement": ["disk_used_percent"], "resources": ["/", "/data"], "metrics_collection_interval": 300 },
                           "swap": { "measurement": ["swap_used_percent"], "metrics_collection_interval": 300 }
                         },
-                        "append_dimensions": { "InstanceId": "${aws:InstanceId}" }
+                        "append_dimensions": { "InstanceId": "${!aws:InstanceId}" }
                       },
                       "logs": {
                         "logs_collected": {
@@ -1120,7 +1120,7 @@ Resources:
                         }
                       }
                     }
-                    CWCONFIG
+                  CWCONFIG
                     /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json || echo "CloudWatch Agent config failed"
                   else
                     echo "[post] Skipping CloudWatch Agent (EnableMonitoring=false)..."
