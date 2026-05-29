@@ -334,6 +334,24 @@ grep STACK_NAME /etc/openclaw/env
 # These values MUST match
 ```
 
+### Guardrail Blocks Missing from Audit Center
+
+**Symptom:** Restricted-tier agents (Finance/Legal) are correctly blocked by the guardrail, but no `guardrail_block` events show up in Admin Console → Audit Center.
+
+**Cause:** The Restricted tier execution role lacks `dynamodb:PutItem`/`UpdateItem`, so the agent's fire-and-forget audit write fails with `AccessDeniedException` (the block still happens; only the audit record is dropped). Runtime log shows `Guardrail block audit write failed (non-fatal): AccessDeniedException ... not authorized to perform: dynamodb:PutItem`.
+
+**Fix:** Grant the role DynamoDB write access (the other three tiers already have it). Verify all four tier roles:
+```bash
+for t in agentcore restricted engineering executive; do
+  echo "### $t"
+  aws iam get-role-policy --role-name <stack>-$t-execution-role \
+    --policy-name $(aws iam list-role-policies --role-name <stack>-$t-execution-role --query 'PolicyNames[0]' --output text) \
+    --query 'PolicyDocument.Statement[?contains(to_string(Action),`dynamodb`)].Action'
+done
+# Each must include dynamodb:PutItem and dynamodb:UpdateItem
+```
+Add the two actions to the role's `DynamoDBReadOnly` statement (preserve the other ~8 statements) and re-apply with `aws iam put-role-policy`. See DEPLOYMENT-FIXES.md → Known Issue #6 for the full procedure.
+
 ### Bedrock Returns Empty Response
 
 **Symptom:** Playground chat returns blank or "I couldn't process your request."

@@ -85,6 +85,30 @@ bash deploy.sh --skip-seed    # rebuilds Docker + redeploys services
 
 AgentCore will pick up the new image on next session creation (old sessions may take 5 min to expire).
 
+### 6. Restricted Tier Role Missing DynamoDB Write (Guardrail Blocks Not Audited)
+
+**Symptom:** Bedrock Guardrail correctly blocks off-limits requests for the Restricted tier (Finance/Legal positions), but the `guardrail_block` events never appear in the Admin Console → Audit Center.
+
+**Cause:** The Restricted tier execution role was scoped to DynamoDB **read-only** (`GetItem`, `Query`, `BatchGetItem`). The agent container writes its own audit trail (`agent_invocation`, `guardrail_block`, usage) to DynamoDB, but this is a fire-and-forget write — failures only log a warning, so the block still happens while the audit record is silently dropped. The runtime log shows:
+```
+Guardrail <id> BLOCKED source=INPUT tenant=emp__...
+Guardrail block audit write failed (non-fatal): AccessDeniedException
+  User: <stack>-restricted-execution-role is not authorized to perform: dynamodb:PutItem
+```
+
+**Fix:** The Restricted tier role needs `dynamodb:PutItem` and `dynamodb:UpdateItem` on the stack table (the other three tiers — standard/engineering/executive — already have them). For a fresh deploy the CloudFormation template now grants these. To patch a running role in place:
+
+```bash
+# Inspect (should list PutItem + UpdateItem)
+aws iam get-role-policy --role-name <stack>-restricted-execution-role \
+  --policy-name RestrictedExecutionPolicy \
+  --query 'PolicyDocument.Statement[?Sid==`DynamoDBReadOnly`].Action'
+```
+
+If they are missing, fetch the full policy document, add `dynamodb:PutItem` and `dynamodb:UpdateItem` to the `DynamoDBReadOnly` statement **without touching the other statements** (the policy has ~9 statements: ECR, Logs, Bedrock, S3, SSM, etc.), and re-apply with `aws iam put-role-policy`. Effect is immediate — re-trigger a blocked request to confirm `guardrail_block` rows now land in DynamoDB.
+
+> Note: AgentCore tier execution roles (`<stack>-restricted-execution-role`) are created outside the CloudFormation template; verify all four tier roles after any role-provisioning change.
+
 ---
 
 ## Environment Variables
