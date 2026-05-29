@@ -40,7 +40,7 @@ Parameters:
 
   InstanceType:
     Type: String
-    Default: "c7g.large"
+    Default: "t3.medium"
     Description: "Graviton (ARM) recommended. c7g = compute-optimized (recommended, 2 vCPU for Node.js + sandbox). r7g/r6g = memory-optimized. t4g = burstable."
     AllowedValues:
       - "t4g.small"
