@@ -79,7 +79,7 @@ Parameters:
 
   OpenClawVersion:
     Type: String
-    Default: "2026.4.27"
+    Default: "latest"
     AllowedValues:
       - "2026.3.24"
       - "2026.4.5"
@@ -1130,7 +1130,7 @@ Resources:
                   # 2026.3.24 on ARM64: use --ignore-scripts (avoids native build issues)
                   # 2026.4.5+: must NOT use --ignore-scripts (needs native modules like @buape/carbon)
                   IGNORE_FLAG=""
-                  if [ "$ARCH" = "aarch64" ] && [ "$OPENCLAW_VERSION" = "2026.3.24" ]; then
+                  if [ "$ARCH" = "aarch64" ] && [ "$OPENCLAW_VERSION" = "latest" ]; then
                     IGNORE_FLAG="--ignore-scripts"
                     echo "ARM64 + 3.24: installing with --ignore-scripts"
                   fi
